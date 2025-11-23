@@ -31,6 +31,10 @@ def telegram_to_discord(update: Update, context: CallbackContext):
 
     text = update.message.text or ""
 
+    # Игнорируем сообщения, пришедшие из Discord
+    if text.startswith("[via Discord]"):
+        return
+
     # Отправка текста в Discord
     if text:
         requests.post(DISCORD_WEBHOOK_URL, json={
@@ -83,11 +87,11 @@ async def on_message(message):
     content = message.content
     files = [attachment.url for attachment in message.attachments]
 
-    # Отправка в Telegram
+    # Добавляем метку [via Discord], чтобы Telegram бот не пересылал обратно
     if content:
-        telegram_bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=content)
+        telegram_bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=f"[via Discord] {content}")
     for f in files:
-        telegram_bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=f)
+        telegram_bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=f"[via Discord] {f}")
 
 # ====== Основной запуск ======
 def main():
