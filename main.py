@@ -23,6 +23,9 @@ DISCORD_CHANNEL_ID = int(os.environ['DISCORD_TARGET_CHANNEL_ID'])
 telegram_bot = Bot(token=TELEGRAM_TOKEN)
 BOT_ID = telegram_bot.get_me().id  # ID самого бота
 
+# Множество для отслеживания уже пересланных сообщений по тексту
+forwarded_telegram_hashes = set()
+
 def get_telegram_avatar_url(user_id):
     """Возвращает URL аватарки Telegram пользователя, если есть"""
     photos = telegram_bot.get_user_profile_photos(user_id, limit=1)
@@ -35,14 +38,19 @@ def get_telegram_avatar_url(user_id):
 def telegram_to_discord(update: Update, context: CallbackContext):
     user = update.effective_user
 
-    # Игнорируем сообщения от самого бота
+    # Игнорируем свои сообщения и сообщения от других ботов
     if user.is_bot or user.id == BOT_ID:
         return
 
     text = update.message.text or ""
+    msg_hash = hash(text)
+    if msg_hash in forwarded_telegram_hashes:
+        return
+    forwarded_telegram_hashes.add(msg_hash)
+
     avatar_url = get_telegram_avatar_url(user.id)
 
-    # Отправка текста в Discord
+    # Отправка текста в Discord через Webhook
     if text:
         requests.post(DISCORD_WEBHOOK_URL, json={
             "content": text,
@@ -67,7 +75,6 @@ def start_telegram_polling():
         MessageHandler(Filters.chat(chat_id=TELEGRAM_CHAT_ID), telegram_to_discord)
     )
     updater.start_polling()
-    # Railway: idle() нельзя, просто держим цикл
     while True:
         time.sleep(60)
 
@@ -82,7 +89,8 @@ async def on_ready():
 
 @discord_client.event
 async def on_message(message):
-    if message.author == discord_client.user:
+    # Игнорируем свои сообщения и все webhook-сообщения
+    if message.author == discord_client.user or message.webhook_id is not None:
         return
     if message.channel.id != DISCORD_CHANNEL_ID:
         return
