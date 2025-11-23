@@ -21,28 +21,33 @@ DISCORD_CHANNEL_ID = int(os.environ['DISCORD_TARGET_CHANNEL_ID'])
 
 # ====== Telegram бот ======
 telegram_bot = Bot(token=TELEGRAM_TOKEN)
+BOT_ID = telegram_bot.get_me().id  # ID самого бота
 
-# Множества для отслеживания уже пересланных сообщений
-forwarded_telegram_ids = set()
-forwarded_discord_ids = set()
+def get_telegram_avatar_url(user_id):
+    """Возвращает URL аватарки Telegram пользователя, если есть"""
+    photos = telegram_bot.get_user_profile_photos(user_id, limit=1)
+    if photos.total_count > 0:
+        file_id = photos.photos[0][-1].file_id  # самый большой размер
+        file_obj = telegram_bot.get_file(file_id)
+        return file_obj.file_path
+    return None
 
 def telegram_to_discord(update: Update, context: CallbackContext):
-    msg_id = update.message.message_id
-    if msg_id in forwarded_telegram_ids:  # Уже переслали
-        return
-    forwarded_telegram_ids.add(msg_id)
-
     user = update.effective_user
-    if user.is_bot:
+
+    # Игнорируем сообщения от самого бота
+    if user.is_bot or user.id == BOT_ID:
         return
 
     text = update.message.text or ""
+    avatar_url = get_telegram_avatar_url(user.id)
 
     # Отправка текста в Discord
     if text:
         requests.post(DISCORD_WEBHOOK_URL, json={
             "content": text,
-            "username": user.username or user.full_name
+            "username": user.username or user.full_name,
+            "avatar_url": avatar_url
         })
 
     # Отправка файлов
@@ -52,7 +57,8 @@ def telegram_to_discord(update: Update, context: CallbackContext):
         url = file_obj.file_path
         requests.post(DISCORD_WEBHOOK_URL, json={
             "content": url,
-            "username": user.username or user.full_name
+            "username": user.username or user.full_name,
+            "avatar_url": avatar_url
         })
 
 def start_telegram_polling():
@@ -76,11 +82,6 @@ async def on_ready():
 
 @discord_client.event
 async def on_message(message):
-    msg_id = message.id
-    if msg_id in forwarded_discord_ids:  # Уже переслали
-        return
-    forwarded_discord_ids.add(msg_id)
-
     if message.author == discord_client.user:
         return
     if message.channel.id != DISCORD_CHANNEL_ID:
