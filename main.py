@@ -24,9 +24,14 @@ telegram_bot = Bot(token=TELEGRAM_TOKEN)
 
 def telegram_to_discord(update: Update, context: CallbackContext):
     user = update.effective_user
+
+    # Игнорируем сообщения от самого бота
+    if user.is_bot:
+        return
+
     text = update.message.text or ""
 
-    # Отправка текста
+    # Отправка текста в Discord
     if text:
         requests.post(DISCORD_WEBHOOK_URL, json={
             "content": text,
@@ -69,6 +74,7 @@ async def on_ready():
 
 @discord_client.event
 async def on_message(message):
+    # Игнорируем свои сообщения
     if message.author == discord_client.user:
         return
     if message.channel.id != DISCORD_CHANNEL_ID:
