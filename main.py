@@ -22,18 +22,21 @@ DISCORD_CHANNEL_ID = int(os.environ['DISCORD_TARGET_CHANNEL_ID'])
 # ====== Telegram бот ======
 telegram_bot = Bot(token=TELEGRAM_TOKEN)
 
-def telegram_to_discord(update: Update, context: CallbackContext):
-    user = update.effective_user
+# Множества для отслеживания уже пересланных сообщений
+forwarded_telegram_ids = set()
+forwarded_discord_ids = set()
 
-    # Игнорируем сообщения от самого бота
+def telegram_to_discord(update: Update, context: CallbackContext):
+    msg_id = update.message.message_id
+    if msg_id in forwarded_telegram_ids:  # Уже переслали
+        return
+    forwarded_telegram_ids.add(msg_id)
+
+    user = update.effective_user
     if user.is_bot:
         return
 
     text = update.message.text or ""
-
-    # Игнорируем сообщения, пришедшие из Discord
-    if text.startswith("[via Discord]"):
-        return
 
     # Отправка текста в Discord
     if text:
@@ -43,12 +46,7 @@ def telegram_to_discord(update: Update, context: CallbackContext):
         })
 
     # Отправка файлов
-    files = []
-    if update.message.photo:
-        files = update.message.photo
-    elif update.message.document:
-        files = [update.message.document]
-
+    files = update.message.photo or [update.message.document] if update.message.document else []
     for f in files:
         file_obj = telegram_bot.get_file(f.file_id)
         url = file_obj.file_path
@@ -78,7 +76,11 @@ async def on_ready():
 
 @discord_client.event
 async def on_message(message):
-    # Игнорируем свои сообщения
+    msg_id = message.id
+    if msg_id in forwarded_discord_ids:  # Уже переслали
+        return
+    forwarded_discord_ids.add(msg_id)
+
     if message.author == discord_client.user:
         return
     if message.channel.id != DISCORD_CHANNEL_ID:
@@ -87,11 +89,11 @@ async def on_message(message):
     content = message.content
     files = [attachment.url for attachment in message.attachments]
 
-    # Добавляем метку [via Discord], чтобы Telegram бот не пересылал обратно
+    # Отправка в Telegram
     if content:
-        telegram_bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=f"[via Discord] {content}")
+        telegram_bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=content)
     for f in files:
-        telegram_bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=f"[via Discord] {f}")
+        telegram_bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=f)
 
 # ====== Основной запуск ======
 def main():
