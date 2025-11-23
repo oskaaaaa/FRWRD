@@ -96,13 +96,18 @@ async def on_message(message):
         return
 
     content = message.content
-    files = [attachment.url for attachment in message.attachments]
+    files = message.attachments
 
-    # Отправка в Telegram
+    # Отправка текста в Telegram
     if content:
         telegram_bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=content)
+
+    # Отправка вложений в Telegram
     for f in files:
-        telegram_bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=f)
+        if f.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp')):
+            telegram_bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=f.url)
+        else:
+            telegram_bot.send_document(chat_id=TELEGRAM_CHAT_ID, document=f.url)
 
 # ====== Основной запуск ======
 def main():
