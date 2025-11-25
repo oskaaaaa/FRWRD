@@ -98,16 +98,19 @@ async def on_message(message):
     content = message.content
     files = message.attachments
 
+    # >>> ДОБАВЛЕНО: username в начале сообщения <<<
+    username = message.author.name
+
     # Отправка текста в Telegram
     if content:
-        telegram_bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=content)
+        telegram_bot.send_message(chat_id=TELEGRAM_CHAT_ID, text=f"{username}: {content}")
 
     # Отправка вложений в Telegram
     for f in files:
         if f.filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp')):
-            telegram_bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=f.url)
+            telegram_bot.send_photo(chat_id=TELEGRAM_CHAT_ID, photo=f.url, caption=f"{username}: {content}" if content else f"{username}:")
         else:
-            telegram_bot.send_document(chat_id=TELEGRAM_CHAT_ID, document=f.url)
+            telegram_bot.send_document(chat_id=TELEGRAM_CHAT_ID, document=f.url, caption=f"{username}: {content}" if content else f"{username}:")
 
 # ====== Основной запуск ======
 def main():
