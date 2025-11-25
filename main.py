@@ -1,8 +1,7 @@
 import os
 import logging
 import discord
-from discord import Intents
-from discord_webhook import DiscordWebhook
+from discord import Intents, SyncWebhook
 from telegram.ext import Updater, MessageHandler, Filters
 from telegram import Bot
 
@@ -21,6 +20,9 @@ telegram_bot = Bot(token=TELEGRAM_TOKEN)
 updater = Updater(token=TELEGRAM_TOKEN, use_context=True)
 dispatcher = updater.dispatcher
 
+# Discord webhook sender
+discord_webhook = SyncWebhook.from_url(DISCORD_WEBHOOK_URL)
+
 # ====== Discord bot ======
 intents = Intents.default()
 intents.messages = True
@@ -29,79 +31,83 @@ discord_client = discord.Client(intents=intents)
 
 
 # ==========================================================
-# TELEGRAM -> DISCORD
+# TELEGRAM → DISCORD
 # ==========================================================
 def tg_to_discord(update, context):
     msg = update.message
     if msg is None:
         return
 
-    sender_name = msg.from_user.full_name
+    username = msg.from_user.full_name
 
-    # TEXT
+    # Аватарка Telegram
+    avatar_url = None
+    if msg.from_user.photo:
+        try:
+            file_id = msg.from_user.photo.big_file_id
+            avatar_url = f"https://api.telegram.org/file/bot{TELEGRAM_TOKEN}/{file_id}"
+        except:
+            avatar_url = None
+
+    # ТЕКСТ
     if msg.text:
-        webhook = DiscordWebhook(
-            url=DISCORD_WEBHOOK_URL,
+        discord_webhook.send(
             content=msg.text,
-            username=sender_name,
-            avatar_url=msg.from_user.photo.big_file_id if msg.from_user else None
+            username=username,
+            avatar_url=avatar_url
         )
-        webhook.execute()
 
-    # PHOTO
+    # ФОТО
     if msg.photo:
         photo = msg.photo[-1].get_file()
         data = photo.download_as_bytearray()
-        webhook = DiscordWebhook(
-            url=DISCORD_WEBHOOK_URL,
-            username=sender_name
+        discord_webhook.send(
+            username=username,
+            avatar_url=avatar_url,
+            file=discord.File(fp=data, filename="photo.jpg")
         )
-        webhook.add_file(file=data, filename="photo.jpg")
-        webhook.execute()
 
-    # DOCUMENT / VIDEO / ETC
+    # ДОКУМЕНТ
     if msg.document:
         file = msg.document.get_file()
         data = file.download_as_bytearray()
-        webhook = DiscordWebhook(
-            url=DISCORD_WEBHOOK_URL,
-            username=sender_name
+        discord_webhook.send(
+            username=username,
+            avatar_url=avatar_url,
+            file=discord.File(fp=data, filename=msg.document.file_name)
         )
-        webhook.add_file(file=data, filename=msg.document.file_name)
-        webhook.execute()
 
+    # ВИДЕО
     if msg.video:
         file = msg.video.get_file()
         data = file.download_as_bytearray()
-        webhook = DiscordWebhook(
-            url=DISCORD_WEBHOOK_URL,
-            username=sender_name
+        discord_webhook.send(
+            username=username,
+            avatar_url=avatar_url,
+            file=discord.File(fp=data, filename="video.mp4")
         )
-        webhook.add_file(file=data, filename="video.mp4")
-        webhook.execute()
 
 
 dispatcher.add_handler(MessageHandler(Filters.all, tg_to_discord))
 
 
 # ==========================================================
-# DISCORD -> TELEGRAM
+# DISCORD → TELEGRAM
 # ==========================================================
 @discord_client.event
 async def on_message(message):
 
-    # ———— FIX ЦИКЛА: игнорируем сообщения, пришедшие от самого вебхука ————
+    # анти-цикл — игнорируем сообщения, сделанные вебхуком
     if message.webhook_id is not None:
-        return  # сообщение отправил наш Telegram→Discord вебхук
+        return
 
-    # игнорируем свои сообщения
     if message.author == discord_client.user:
         return
 
     if message.channel.id != DISCORD_CHANNEL_ID:
         return
 
-    username = message.author.display_name  # красивый ник на сервере
+    username = message.author.display_name
     content = message.content
     attachments = message.attachments
 
@@ -112,7 +118,7 @@ async def on_message(message):
             text=f"{username}: {content}"
         )
 
-    # ФАЙЛЫ — как вложения, а не ссылки
+    # ВЛОЖЕНИЯ
     for file in attachments:
         data = await file.read()
 
@@ -121,7 +127,7 @@ async def on_message(message):
             telegram_bot.send_photo(
                 chat_id=TELEGRAM_CHAT_ID,
                 photo=data,
-                caption=f"{username}:" if not content else None
+                caption=f"{username}:"
             )
 
         # видео
@@ -129,16 +135,16 @@ async def on_message(message):
             telegram_bot.send_video(
                 chat_id=TELEGRAM_CHAT_ID,
                 video=data,
-                caption=f"{username}:" if not content else None
+                caption=f"{username}:"
             )
 
-        # документы
+        # все остальное → документ
         else:
             telegram_bot.send_document(
                 chat_id=TELEGRAM_CHAT_ID,
                 document=data,
                 filename=file.filename,
-                caption=f"{username}:" if not content else None
+                caption=f"{username}:"
             )
 
 
